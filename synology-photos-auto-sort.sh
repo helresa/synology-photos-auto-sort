@@ -95,7 +95,7 @@ echo "Allowed formats: ${ALLOWED_EXT}"
 echo ""
 
 ### Move to source folder
-cd ${SOURCE}
+cd "${SOURCE}" || exit 0
 
 echo "Start process"
 
@@ -116,13 +116,19 @@ if [[ ${FILES_COUNTER} != 0 ]]; then
     PROGRESS=0
     echo -ne "${PROGRESS}%\033[0K\r"
 
-    for FILE in ${FILES_ARR[@]}; do
+    # Create a new log file
+    CURRENT_DATE=`date +"%Y-%m-%d_%H-%M"`
+    LOG_FILE="${LOG_DIRECTORY}/${CURRENT_DATE}_ok.log"
+    mkdir -p "${SOURCE}/${LOG_DIRECTORY}"
+    touch "${LOG_FILE}"
+
+    for FILE in "${FILES_ARR[@]}"; do
         FILENAME="${FILE%.*}" # Get filename
         EXT="${FILE##*.}" # Get file extension
 
         # Verify if the extension is allowed
         if [[ ${ALLOWED_EXT} == *"$EXT"* ]]; then
-            DATETIME=$(exiftool ${FILE} | grep -i "create date" | head -1 | xargs)
+            DATETIME=$(exiftool "${FILE}" | grep -i "create date" | head -1 | xargs)
 
             # Verify if we have exif data available
             if [[ -z ${DATETIME} ]]; then
@@ -134,16 +140,19 @@ if [[ ${FILES_COUNTER} != 0 ]]; then
             # Extract date, time year and month and build new filename
             DATE=${DATETIME:14:10}
             TIME=${DATETIME:25:8}
-            NEW_NAME=${DATE//:}_${TIME//:}.${EXT,,}
+            
+            # new name with old name (after "__" and before extension)
+            NEW_NAME=${DATE//:}_${TIME//:}__${FILENAME}.${EXT,,}  
 
             # Create target folder
             YEAR=${DATE:0:4}
             MONTH=${DATE:5:2}
-            mkdir -p ${TARGET}/${YEAR}/${YEAR}.${MONTH}
+            mkdir -p "${TARGET}/${YEAR}/${YEAR}.${MONTH}"
 
             # Move the file to target folder if not exist in target folder
             if [[ ! -f ${TARGET}/${YEAR}/${YEAR}.${MONTH}/${NEW_NAME} ]]; then
-                mv -n ${FILE} ${TARGET}/${YEAR}/${YEAR}.${MONTH}/${NEW_NAME}
+                mv -n "${FILE}" "${TARGET}/${YEAR}/${YEAR}.${MONTH}/${NEW_NAME}"
+                echo "${FILE} moved into ${TARGET}/${YEAR}/${YEAR}.${MONTH}/${NEW_NAME}"  >> ${LOG_FILE}
 
                 # Remove the moved file from the array
                 let FILES_COUNTER--
@@ -177,28 +186,28 @@ if [[ ${FILES_COUNTER} != 0 ]]; then
     PROGRESS=0
     echo -ne "${PROGRESS}%\033[0K\r"
 
-    mkdir -p ${SOURCE}/${ERROR_DIRECTORY}
-    mkdir -p ${SOURCE}/${DUPLICATE_DIRECTORY}
-    mkdir -p ${SOURCE}/${LOG_DIRECTORY}
+    mkdir -p "${SOURCE}/${ERROR_DIRECTORY}"
+    mkdir -p "${SOURCE}/${DUPLICATE_DIRECTORY}"
+    mkdir -p "${SOURCE}/${LOG_DIRECTORY}"
 
     # Create a new log file
     CURRENT_DATE=`date +"%Y-%m-%d_%H-%M"`
     LOG_FILE="${LOG_DIRECTORY}/${CURRENT_DATE}.log"
-    touch ${LOG_FILE}
+    touch "${LOG_FILE}"
 
-    for FILE in ${FILES_ARR[@]}; do
+    for FILE in "${FILES_ARR[@]}"; do
         FILENAME="${FILE%.*}" # Get filename
         EXT="${FILE##*.}" # Get file extension
 
         # Verify if the extension is allowed
         if [[ ${ALLOWED_EXT} == *"$EXT"* ]]; then
-            DATETIME=$(exiftool ${FILE} | grep -i "create date" | head -1 | xargs)
+            DATETIME=$(exiftool "${FILE}" | grep -i "create date" | head -1 | xargs)
 
             # Verify if we have exif data available
             if [[ -z ${DATETIME} ]]; then
-                NEW_FILENAME=${FILENAME=//:}_exif_data_missing.${EXT,,}
+                NEW_FILENAME="${FILENAME=//:}_exif_data_missing.${EXT,,}"
                 echo "No exif data available for image ${FILE}, moved into ${ERROR_DIRECTORY} and renamed as ${NEW_FILENAME}" >> ${LOG_FILE}
-                mv ${FILE} ${SOURCE}/${ERROR_DIRECTORY}/${NEW_FILENAME}
+                mv "${FILE}" "${SOURCE}/${ERROR_DIRECTORY}/${NEW_FILENAME}"
 
                 let PROGRESS++
                 echo -ne "$((${PROGRESS} * 100 / ${TOTAL_FILES_COUNTER}))%\033[0K\r"
@@ -211,23 +220,23 @@ if [[ ${FILES_COUNTER} != 0 ]]; then
             else
                 DATE=${DATETIME:14:10}
                 TIME=${DATETIME:25:8}
-                NEW_FILENAME=${DATE//:}_${TIME//:}.${EXT,,}
+                NEW_FILENAME="${DATE//:}_${TIME//:}.${EXT,,}"
 
                 # Get target file path
                 YEAR=${DATE:0:4}
                 MONTH=${DATE:5:2}
-                TARGET_FILEPATH=${TARGET}/${YEAR}/${YEAR}.${MONTH}/${NEW_FILENAME}
+                TARGET_FILEPATH="${TARGET}/${YEAR}/${YEAR}.${MONTH}/${NEW_FILENAME}"
 
                 # Test if existing file is the same
                 # Get base64 encoded image
-                SOURCE_FILE_BASE64="$(cat ${FILE} | base64)"
-                TARGET_FILE_BASE64="$(cat ${TARGET_FILEPATH} | base64)"
+                SOURCE_FILE_BASE64="$(cat '${FILE}' | base64)"
+                TARGET_FILE_BASE64="$(cat '${TARGET_FILEPATH}' | base64)"
 
                 #See if files are the same
                 if [[ ${SOURCE_FILE_BASE64} == ${TARGET_FILE_BASE64} ]]; then
-                    NEW_FILENAME=${FILENAME=//:}_duplicate.${EXT,,}
+                    NEW_FILENAME="${FILENAME=//:}_duplicate.${EXT,,}"
                     echo "The file ${FILE} already exist and is the same! File ${FILE} moved into ${DUPLICATE_DIRECTORY} and renamed as ${NEW_FILENAME}" >> ${LOG_FILE}
-                    mv ${FILE} ${SOURCE}/${DUPLICATE_DIRECTORY}/${NEW_FILENAME}
+                    mv "${FILE}" "${SOURCE}/${DUPLICATE_DIRECTORY}/${NEW_FILENAME}"
 
                     let PROGRESS++
                     echo -ne "$((${PROGRESS} * 100 / ${TOTAL_FILES_COUNTER}))%\033[0K\r"
@@ -242,9 +251,9 @@ if [[ ${FILES_COUNTER} != 0 ]]; then
                     #UUID=$(cat /proc/sys/kernel/random/uuid)
                     UUID="U$(date +%s%N)"
 
-                    NEW_FILENAME=${FILENAME=//:}_${UUID}.${EXT,,}
+                    NEW_FILENAME="${FILENAME=//:}_${UUID}.${EXT,,}"
 
-                    mv -n ${FILE} ${TARGET}/${YEAR}/${YEAR}.${MONTH}/${NEW_NAME}
+                    mv -n "${FILE}" "${TARGET}/${YEAR}/${YEAR}.${MONTH}/${NEW_NAME}"
 
                     let PROGRESS++
                     echo -ne "$((${PROGRESS} * 100 / ${TOTAL_FILES_COUNTER}))%\033[0K\r"
